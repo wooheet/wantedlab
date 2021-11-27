@@ -1,14 +1,26 @@
-version: '3'
+version: '3.8'
 services:
-  web:
-    image: nginx:latest
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: 'python app/main.py'
     ports:
-      - "30001:8080"
-    expose:
-      - "8080"
-    networks:
-      - our_net
+      - 8002:5000
+    volumes:
+      - .:/app
+    depends_on:
+      - db
 
-networks:
-  our_net:
-    driver: bridge
+  db:
+    image: mysql:5.7.22
+    restart: always
+    environment:
+      MYSQL_DATABASE: wanted
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - .dbdata:/var/lib/mysql
+    ports:
+      - 33068:3306
