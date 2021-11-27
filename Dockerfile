@@ -1,7 +1,6 @@
 FROM python:3.9
 
 COPY ./app /app
-COPY ./requirements.txt /requirements.txt
 
 WORKDIR /app
 RUN apt-get update \
