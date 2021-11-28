@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: 'python app/main.py'
+    command: 'python wanted_lab/main.py'
     ports:
       - 8002:5000
     volumes:

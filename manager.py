@@ -1,6 +1,6 @@
-from app.main import app, db
-# from app.main import app
-# from app.database import db
+from wanted_lab.main import app, db
+# from wanted_lab.main import wanted_lab
+# from wanted_lab.database import SessionLocal, db
 from flask_migrate import Migrate, MigrateCommand
 from flask_script import Manager
 
