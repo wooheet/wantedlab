@@ -1,5 +1,5 @@
 from flask_cors import CORS
-from flask import Flask, jsonify, abort, request
+from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from dataclasses import dataclass
 from sqlalchemy.orm import relationship
@@ -37,6 +37,7 @@ def get_or_create(session, model, **kwargs):
         return instance
 
 
+# TODO: Move models file
 @dataclass
 class Company(db.Model):
     __tablename__ = "companies"
@@ -106,20 +107,87 @@ class Tag(db.Model):
     company_tags = relationship("CompanyTag", back_populates="tag")
 
 
+# TODO: Move views file
 @app.route('/search')
 def company_name_autocomplete():
-    query = request.args.get('query')
-    language = request.headers.get('x-wanted-language')
+    x_wanted_language = request.headers.get('x-wanted-language')
 
-    return 'search'
+    # TODO: Move services file
+    language_id = SessionLocal() \
+        .query(LanguageType) \
+        .filter(LanguageType.type == x_wanted_language) \
+        .value(LanguageType.id)
+
+    company_list = SessionLocal() \
+        .query(CompanyName) \
+        .filter(CompanyName.language_type_id == language_id) \
+        .join(LanguageType, CompanyName.language_type_id == LanguageType.id)
+
+    if x_wanted_language:
+        model_column = getattr(CompanyName, "name")
+        company_id = SessionLocal() \
+            .query(CompanyName) \
+            .filter(model_column.ilike(f'{x_wanted_language}%')) \
+            .join(LanguageType, CompanyName.language_type_id == LanguageType.id)
+
+        company_id_list = [company.company_id for company in company_id]
+
+        company_list = SessionLocal().query(CompanyName). \
+            filter(CompanyName.company_id.in_(company_id_list)). \
+            filter(CompanyName.language_type_id == language_id). \
+            join(LanguageType, CompanyName.language_type_id == LanguageType.id)
+
+    result = [dict(company_name=company.name) for company in company_list]
+    return result
 
 
 @app.route('/companies/<company_name>')
 def company_search(company_name):
-    print(company_name)
-    language = request.headers.get('x-wanted-language')
+    x_wanted_language = request.headers.get('x-wanted-language')
 
-    return 'company_search'
+    try:
+        # TODO: Move services file
+        language_id = SessionLocal() \
+            .query(LanguageType) \
+            .filter(LanguageType.type == x_wanted_language) \
+            .value(LanguageType.id)
+
+        company = SessionLocal() \
+            .query(CompanyName) \
+            .filter(CompanyName.name == company_name) \
+            .join(Company, CompanyName.company_id == Company.id)
+
+        company_name = SessionLocal() \
+            .query(CompanyName) \
+            .filter(CompanyName.company_id == company.value(CompanyName.company_id), LanguageType.id == language_id) \
+            .join(LanguageType, CompanyName.language_type_id == LanguageType.id).value(CompanyName.name)
+
+        lang_tags_set = SessionLocal().query(TagName). \
+            filter(TagName.language_type_id == language_id). \
+            join(Tag, TagName.tag_id == Tag.id)
+
+        lang_tags_list = [tag.tag_id for tag in lang_tags_set]
+
+        company_tags = SessionLocal().query(CompanyTag)\
+            .filter(CompanyTag.company_id == company.value(CompanyName.company_id),
+                   CompanyTag.tag_id.in_(lang_tags_list))\
+            .join(Tag, CompanyTag.tag_id == Tag.id)
+
+        tag_id_list = [tag.tag_id for tag in company_tags]
+
+        tag_name_list = SessionLocal().query(Tag). \
+            filter(Tag.id.in_(tag_id_list))
+
+        tag_result = [tag.name for tag in tag_name_list]
+
+        result = dict(
+            company_name=company_name,
+            tags=tag_result
+        )
+        return result
+
+    except AttributeError:
+        return jsonify({'message': 'INTERNAL_SERVER_ERROR'}, status=500)
 
 
 @app.route('/companies', methods=['POST'])
@@ -134,6 +202,7 @@ def new_company():
     res_company_name = ''
     res_tag_names = []
 
+    # TODO: Move services file
     for i in range(len(tag_list)):
         tag_id = tag_list[i]['tag_name'][language_list[0]].split('_')[1]
 
