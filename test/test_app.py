@@ -1,7 +1,7 @@
 import unittest
 import json
 
-from app.main import app
+from wanted_lab.main import app
 
 
 class UnitTest(unittest.TestCase):

@@ -8,3 +8,4 @@ requests==2.25.0
 mysqlclient==2.0.1
 pika==1.1.0
 pytest==6.2.5
+fastapi

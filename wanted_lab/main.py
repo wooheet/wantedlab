@@ -1,21 +1,40 @@
-import json
 from flask_cors import CORS
 from flask import Flask, jsonify, abort, request
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from dataclasses import dataclass
 from sqlalchemy.orm import relationship
 from sqlalchemy import Column, ForeignKey, Integer, String
-# python manager.py db migrate
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
 SQLALCHEMY_DATABASE_URL = 'mysql://root:root@db/wanted'
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 CORS(app)
+db = SQLAlchemy()
+db.init_app(app)
 
-db = SQLAlchemy(app)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+
+def get_or_create(session, model, **kwargs):
+    instance = session.query(model).filter_by(**kwargs).first()
+    if instance:
+        return instance
+    else:
+        instance = model(**kwargs)
+        session.add(instance)
+        session.commit()
+        return instance
 
 
 @dataclass
@@ -48,7 +67,6 @@ class CompanyName(db.Model):
     language_type_id = Column(Integer, ForeignKey("language_types.id"))
     company_id = Column(Integer, ForeignKey("companies.id"))
     name = Column(String(100), index=True)
-
     language_type = relationship("LanguageType", back_populates="company_names")
     company = relationship("Company", back_populates="company_names")
 
@@ -61,7 +79,6 @@ class TagName(db.Model):
     language_type_id = Column(Integer, ForeignKey("language_types.id"))
     tag_id = Column(Integer, ForeignKey("tags.id"))
     name = Column(String(100), index=True)
-
     language_type = relationship("LanguageType", back_populates="tag_names")
     tag = relationship("Tag", back_populates="tag_names")
 
@@ -107,59 +124,59 @@ def company_search(company_name):
 
 @app.route('/companies', methods=['POST'])
 def new_company():
-    language = request.headers.get('x-wanted-language')
-    print(request.get_json())
-    # company_name = data.get('company_name', {})
-    # tag_list = data.get('tags', [])
-    # language_list = list(company_name.keys())
+    request_language = request.headers.get('x-wanted-language')
+    data = request.get_json()
+    company_name = data.get('company_name', {})
+    tag_list = data.get('tags', [])
+    language_list = list(company_name.keys())
+    company = Company()
 
-    return 'test'
-    # company = Company()
-    #
-    # for i in range(len(tag_list)):
-    #     tag_id = tag_list[i]['tag_name'][language_list[0]].split('_')[1]
-    #
-    #     if not Tag.objects.filter(id=tag_id).exists():
-    #         Tag.objects.create(id=tag_id)
-    #
-    #     CompanyTag.objects.create(
-    #         company=company,
-    #         tag_id=tag_id
-    #     )
-    #
-    # for type in language_list:
-    #     language_type, is_language_type = LanguageType.objects.get_or_create(
-    #         type=type
-    #     )
-    #     CompanyName.objects.create(
-    #         company=company,
-    #         language_type=language_type,
-    #         name=company_name[type]
-    #     )
-    #
-    #     for i in range(len(tag_list)):
-    #         tag_id = tag_list[i]['tag_name'][type].split('_')[1]
-    #
-    #         TagName.objects.get_or_create(
-    #             tag_id=tag_id,
-    #             language_type=language_type,
-    #             name=tag_list[i]['tag_name'][type]
-    #         )
-    #
-    # if not LanguageType.objects.filter(type=language).exists():
-    #     # return abort(404, 'LANGUAGE_TYPE_DOES_NOT_EXIST')
-    #     return jsonify({'message': 'LANGUAGE_TYPE_DOES_NOT_EXIST'}, status=404)
-    #
-    # language_type = LanguageType.objects.get(type=language)
-    # company_name = CompanyName.objects.get(company=company, language_type=language_type)
-    # tags = CompanyTag.objects.select_related('tag').filter(company=company)
-    # tag_id_list = [tag.tag_id for tag in tags]
-    # tag_names = TagName.objects.filter(tag_id__in=tag_id_list, language_type=language_type)
-    # result = {"company_name": company_name.name,
-    #           "tags": [tag.name for tag in tag_names]
-    #           }
-    #
-    # return jsonify({'data': result}, status=201)
+    res_company_name = ''
+    res_tag_names = []
+
+    for i in range(len(tag_list)):
+        tag_id = tag_list[i]['tag_name'][language_list[0]].split('_')[1]
+
+        # tag = get_or_create(SessionLocal(), Tag(), id=tag_id)
+        tag = Tag(id=tag_id)
+        company_tag = CompanyTag()
+        company_tag.tag = tag
+        company_tag.company = company
+
+    for l_type in language_list:
+        if l_type == request_language:
+            res_company_name = company_name[l_type]
+
+        language_type = LanguageType(type=l_type)
+        company_name = CompanyName(
+            company=company,
+            language_type=language_type,
+            name=company_name[l_type]
+        )
+
+        for i in range(len(tag_list)):
+            tag_id = tag_list[i]['tag_name'][l_type].split('_')[1]
+
+            tag_name = TagName(
+                tag_id=tag_id,
+                language_type=language_type,
+                name=tag_list[i]['tag_name'][l_type]
+            )
+            res_tag_names.append(tag_name)
+
+    tag_name_list = [tag.name for tag in res_tag_names]
+    if not tag_name_list:
+        return jsonify({'message': 'NOT_FOUND_TAG_NAME'}, status=404)
+
+    SessionLocal().add(company)
+    SessionLocal().commit()
+
+    result = dict(
+        company_name=res_company_name,
+        tags=tag_name_list
+    )
+
+    return jsonify({'data': result}, status=201)
 
 
 if __name__ == '__main__':
